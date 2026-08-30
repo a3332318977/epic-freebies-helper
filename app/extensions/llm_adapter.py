@@ -1303,8 +1303,8 @@ def apply_gemini_patch(settings: Any):
             if base_url:
                 if base_url.endswith("/v1"):
                     base_url = base_url[:-3]
-                if not base_url.endswith("/gemini"):
-                    base_url = f"{base_url}/gemini"
+                if base_url.endswith("/gemini"):
+                    base_url = base_url[:-7]
 
                 kwargs["http_options"] = types.HttpOptions(base_url=base_url)
                 logger.info(
