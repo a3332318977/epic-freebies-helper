@@ -535,12 +535,16 @@ class EpicAuthorization:
                 raise RuntimeError(error_code)
 
             
-            if not self._is_login_success_signal.empty():
-    await self._is_login_success_signal.get()
+        if not 
+        self._is_login_success_signal.empty():
+        await
+     self._is_login_success_signal.get()
 
-    if await self._detect_authenticated_state():
+    if await 
+    self._detect_authenticated_state():
         return
-
+        
+        
     logger.debug(
         "Epic analytics login signal received, but authenticated state "
         "is not yet visible | current_url='{}'",
