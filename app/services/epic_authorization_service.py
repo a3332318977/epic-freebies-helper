@@ -38,55 +38,6 @@ class EpicManualActionRequiredError(RuntimeError):
 
 class EpicAuthorization:
 
-
-
-   async def _detect_authenticated_state(self) -> bool:
-    """
-    综合判断 Epic 是否已经完成登录。
-
-    不依赖单一 analytics 请求。
-    """
-
-    # ① Epic 官方导航组件
-    status = await self._get_login_status(
-        timeout_ms=2000,
-        warn_timeout=False,
-    )
-
-    if status == "true":
-        logger.success(
-            "Epic authentication confirmed by egs-navigation"
-        )
-        return True
-
-    # ② URL 已经离开登录页面
-    current_url = (self.page.url or "").lower()
-
-    if (
-        "/id/login" not in current_url
-        and "/id/login/mfa" not in current_url
-        and "epicgames.com" in current_url
-    ):
-        logger.debug(
-            "Epic login page disappeared | current_url='{}'",
-            self.page.url,
-        )
-
-        # URL 离开登录页面以后，再确认一次导航状态
-        status = await self._get_login_status(
-            timeout_ms=3000,
-            warn_timeout=False,
-        )
-
-        if status == "true":
-            logger.success(
-                "Epic authentication confirmed after leaving login page"
-            )
-            return True
-
-    return False
-    
-
     def __init__(self, page: Page):
         self.page = page
 
@@ -415,7 +366,7 @@ class EpicAuthorization:
     ) -> None:
         started_at = time.monotonic()
         deadline = started_at + timeout_seconds
-        hard_timeout_seconds = max(timeout_seconds, 120)
+        hard_timeout_seconds = max(timeout_seconds, 180)
         max_deadline = started_at + hard_timeout_seconds
         max_totp_attempts = 6
         max_invalid_totp_rejections = 3
@@ -534,23 +485,10 @@ class EpicAuthorization:
 
                 raise RuntimeError(error_code)
 
-            
-        if not 
-        self._is_login_success_signal.empty():
-        await
-     self._is_login_success_signal.get()
+            if not self._is_login_success_signal.empty():
+                await self._is_login_success_signal.get()
+                return
 
-    if await 
-    self._detect_authenticated_state():
-        return
-        
-        
-    logger.debug(
-        "Epic analytics login signal received, but authenticated state "
-        "is not yet visible | current_url='{}'",
-        self.page.url,
-    )
-            
             if self._needs_privacy_policy_correction():
                 raise RuntimeError("privacy_policy_confirmation_required")
 
@@ -622,9 +560,9 @@ class EpicAuthorization:
                 continue
 
             if not self._is_mfa_page() and "/id/login" not in self.page.url:
-    if await self._detect_authenticated_state():
-        return
-        
+                if "true" == await self._get_login_status(timeout_ms=500, warn_timeout=False):
+                    return
+
             await self.page.wait_for_timeout(500)
 
         raise PlaywrightTimeoutError("Timed out waiting for Epic login outcome")
@@ -675,47 +613,23 @@ class EpicAuthorization:
             raise
 
     async def _get_login_status(
-    self,
-    timeout_ms: int = 30000,
-    *,
-    warn_timeout: bool = True,
-) -> str | None:
-    if self._needs_privacy_policy_correction():
-        return None
+        self, timeout_ms: int = 30000, *, warn_timeout: bool = True
+    ) -> str | None:
+        if self._needs_privacy_policy_correction():
+            return None
 
-    try:
-        navigation = self.page.locator("egs-navigation").first
-
-        await navigation.wait_for(
-            state="attached",
-            timeout=timeout_ms,
-        )
-
-        status = await navigation.get_attribute(
-            "isloggedin",
-            timeout=3000,
-        )
-
-        if status in ("true", "false"):
-            return status
-
-    except PlaywrightTimeoutError:
-        if warn_timeout:
-            logger.debug(
-                "Timed out waiting for egs-navigation during auth check | current_url='{}'",
-                self.page.url,
+        try:
+            return await self.page.locator("//egs-navigation").get_attribute(
+                "isloggedin", timeout=timeout_ms
             )
+        except PlaywrightTimeoutError:
+            if warn_timeout:
+                logger.warning(
+                    "Timed out while waiting for //egs-navigation during auth check | current_url='{}'",
+                    self.page.url,
+                )
+            return None
 
-    except Exception as err:
-        logger.debug(
-            "Failed to read Epic login marker | current_url='{}' err={!r}",
-            self.page.url,
-            err,
-        )
-
-    return None
-    
-    
     async def _has_account_session(self) -> bool:
         try:
             await self.page.goto(URL_ORDER_HISTORY, wait_until="domcontentloaded", timeout=15000)
@@ -832,7 +746,7 @@ class EpicAuthorization:
                     pass
 
                 try:
-                    await self._await_login_outcome(point_url, agent, timeout_seconds=90)
+                    await self._await_login_outcome(point_url, agent, timeout_seconds=25)
                     login_confirmed = True
                     break
                 except PlaywrightTimeoutError:
